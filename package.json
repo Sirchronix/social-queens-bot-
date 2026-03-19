@@ -1,0 +1,12 @@
+{
+  "name": "social-queens-chatbot",
+  "version": "1.0.0",
+  "description": "Social Queens Club Elite – KI Chatbot",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
