@@ -792,73 +792,48 @@ function hideTyping() {
 const API_KEY = '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'; // sk-ant-api03-...
 
 // ──────────────────────────────────────────
-// STREAMING API CALL
+// API CALL (kein Streaming – funktioniert direkt im Browser)
 // ──────────────────────────────────────────
 async function streamClaudeAPI(userMessage, bubbleEl) {
   conversationHistory.push({ role: 'user', content: userMessage });
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 350,
-      system: SYSTEM_PROMPT,
-      messages: conversationHistory,
-      stream: true
-    })
-  });
+  let response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 350,
+        system: SYSTEM_PROMPT,
+        messages: conversationHistory
+      })
+    });
+  } catch(networkErr) {
+    throw new Error('Netzwerkfehler: ' + networkErr.message);
+  }
 
   if (!response.ok) {
-    if (response.status === 401) throw new Error('API Key fehlt oder ungültig. Bitte in der HTML-Datei eintragen.');
-    if (response.status === 403) throw new Error('API Key hat keine Berechtigung.');
-    throw new Error(`API Fehler: ${response.status}`);
+    const errBody = await response.text();
+    if (response.status === 401) throw new Error('❌ API Key ungültig oder fehlt. Bitte in der Datei eintragen (sk-ant-...)');
+    if (response.status === 403) throw new Error('❌ API Key hat keine Berechtigung.');
+    throw new Error(`❌ API Fehler ${response.status}: ${errBody}`);
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let fullText = '';
-  let rawBuffer = '';
+  const data = await response.json();
+  const fullText = data.content?.[0]?.text || '';
 
-  // Create a text container and a cursor element separately
-  const textEl = document.createElement('div');
-  const cursorEl = document.createElement('span');
-  cursorEl.className = 'cursor';
-  cursorEl.textContent = '▋';
+  // Zeige Antwort an
   bubbleEl.innerHTML = '';
+  const textEl = document.createElement('div');
+  textEl.innerHTML = formatMessage(fullText);
   bubbleEl.appendChild(textEl);
-  bubbleEl.appendChild(cursorEl);
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    rawBuffer += decoder.decode(value, { stream: true });
-    const lines = rawBuffer.split('\n');
-    rawBuffer = lines.pop();
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const jsonStr = line.slice(6).trim();
-      if (jsonStr === '[DONE]' || !jsonStr) continue;
-      try {
-        const evt = JSON.parse(jsonStr);
-        if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
-          fullText += evt.delta.text;
-          textEl.innerHTML = formatMessage(fullText);
-          scrollToBottom();
-        }
-      } catch (_) {}
-    }
-  }
-
-  // Remove cursor cleanly – no innerHTML rebuild needed
-  cursorEl.remove();
   conversationHistory.push({ role: 'assistant', content: fullText });
   return fullText;
 }
@@ -906,7 +881,7 @@ async function sendMessage() {
     if (showCTA) bubble.appendChild(buildCTA());
     scrollToBottom();
   } catch (err) {
-    bubble.innerHTML = formatMessage('❗ Kein API Key gefunden. Bitte öffne die HTML-Datei im Texteditor und ersetze <strong>DEIN-API-KEY-HIER</strong> mit deinem Key von console.anthropic.com');
+    bubble.innerHTML = formatMessage('❗ **Fehler:** ' + err.message);
     console.error(err);
   }
 
